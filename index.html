@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ohana Clean v4.5.0 - Sistema de Gestão</title>
+    <link rel="icon" href="https://drive.google.com/uc?export=view&id=1TpRK1Hojd_rhhcCiZ799q8HZQu28Gmu2" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Apply theme before page renders to avoid flash
+      (function() {
+        try {
+          const stored = localStorage.getItem('ohana-clean-storage');
+          if (stored) {
+            const data = JSON.parse(stored);
+            if (data.state && data.state.theme === 'dark') {
+              document.documentElement.classList.add('dark');
+              document.documentElement.style.colorScheme = 'dark';
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* Prevent flash of unstyled content */
+      html { background-color: #fafafa; }
+      html.dark { background-color: #0a0a0a; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
