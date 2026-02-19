@@ -222,7 +222,6 @@ export function RawMaterials() {
       e.preventDefault();
       const now = Date.now();
       
-      // Se ENTER foi pressionado 2x em menos de 500ms, vai para o botão de submeter
       if (now - lastEnterTime < 500) {
         submitButtonRef.current?.focus();
         submitButtonRef.current?.click();
@@ -232,7 +231,6 @@ export function RawMaterials() {
       
       setLastEnterTime(now);
       
-      // Busca o próximo campo pelo data-field-index
       const nextField = formContainerRef.current?.querySelector(`[data-field-index="${currentIndex + 1}"]`) as HTMLElement;
       if (nextField) {
         nextField.focus();
@@ -269,7 +267,7 @@ export function RawMaterials() {
     setImagePreview('');
     setHasVariants(false);
     setVariants([]);
-    setIsChemical(true); // Por padrão, é produto químico
+    setIsChemical(true); 
     setIsIndeterminate(false);
     reset({
       name: '',
@@ -294,7 +292,7 @@ export function RawMaterials() {
     setImagePreview(material.imageUrl || '');
     setHasVariants(material.hasVariants || false);
     setVariants(material.variants || []);
-    setIsChemical(material.isChemical !== false); // Se não está definido, assume como químico
+    setIsChemical(material.isChemical !== false);
     setIsIndeterminate(material.isIndeterminate || false);
     reset({
       name: material.name,
@@ -423,14 +421,36 @@ export function RawMaterials() {
     }).format(value);
   };
 
-  const getExpirationStatus = (material: RawMaterial) => {
-    // Se não é químico ou é indeterminado -> Branco com X
+  // Função que retorna a bolinha de status de validade
+  const getExpirationDot = (material: RawMaterial) => {
     if (material.isChemical === false || material.isIndeterminate) {
-      return { color: 'bg-white border border-neutral-300', icon: 'X', text: 'Indeterminado / Não Químico' };
+      return (
+        <div className="flex items-center justify-center w-4 h-4 bg-white border border-neutral-300 rounded-full shadow-sm" title="Sem prazo de validade (Indeterminado / Não Químico)">
+          <span className="text-[10px] font-bold text-neutral-500 leading-none pb-[1px]">x</span>
+        </div>
+      );
     }
+    if (!material.expirationDate) return null;
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expDate = new Date(material.expirationDate);
+    expDate.setHours(0, 0, 0, 0);
+    const diffTime = expDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return <div className="w-4 h-4 bg-purple-600 rounded-full shadow-sm" title="Vencido" />;
+    if (diffDays <= 7) return <div className="w-4 h-4 bg-red-500 rounded-full shadow-sm" title="1 semana para vencer" />;
+    if (diffDays <= 60) return <div className="w-4 h-4 bg-yellow-400 rounded-full shadow-sm" title="Até 2 meses para vencer" />;
+    return <div className="w-4 h-4 bg-green-500 rounded-full shadow-sm" title="Dentro do prazo" />;
+  };
+
+  const getExpirationStatus = (material: RawMaterial) => {
+    if (material.isChemical === false || material.isIndeterminate) {
+      return { color: 'bg-white border border-neutral-300 text-neutral-600', text: 'Indeterminado' };
+    }
     if (!material.expirationDate) {
-      return { color: 'bg-neutral-400', icon: '?', text: 'Data não informada' };
+      return { color: 'bg-neutral-100 text-neutral-600', text: 'Não informada' };
     }
 
     const today = new Date();
@@ -441,76 +461,54 @@ export function RawMaterials() {
     const diffTime = expDate.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // Vencido
     if (diffDays < 0) {
-      return { color: 'bg-purple-600', text: `Vencido há ${Math.abs(diffDays)} dias` };
+      return { color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', text: 'Vencido' };
     }
-    
-    // 1 semana (7 dias)
     if (diffDays <= 7) {
-      return { color: 'bg-red-500', text: `Vence em ${diffDays} dias` };
+      return { color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', text: `Vence em ${diffDays}d` };
     }
-    
-    // 2 meses (60 dias)
     if (diffDays <= 60) {
-      return { color: 'bg-amber-400', text: `Vence em ${diffDays} dias` };
+      return { color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', text: `Vence em ${diffDays}d` };
     }
-
-    // Mais de 2 meses
-    return { color: 'bg-green-500', text: `Vence em ${diffDays} dias` };
+    return { color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', text: 'No prazo' };
   };
-
-  const lowStockItems = rawMaterials.filter(m => m.currentStock <= m.minStock && m.status === 'active');
 
   return (
     <div className="space-y-6">
-      {lowStockItems.length > 0 && (
-        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
-          <CardContent className="py-4">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="text-amber-500" size={20} />
-              <span className="text-sm text-amber-700 dark:text-amber-400">
-                {lowStockItems.length} {lowStockItems.length === 1 ? 'item' : 'itens'} com estoque baixo
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Matérias-Primas</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">
+            Gerencie o estoque e custo dos insumos
+          </p>
+        </div>
+        <Button onClick={openCreateModal} className="w-full sm:w-auto">
+          <Plus size={20} />
+          Nova Matéria-Prima
+        </Button>
+      </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800">
-                <Package className="text-neutral-600 dark:text-neutral-400" size={20} />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">
-                  Matérias-Primas
-                </h2>
-                <p className="text-sm text-neutral-500">{rawMaterials.length} itens cadastrados</p>
-              </div>
+        <CardContent className="p-6">
+          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
+                size={20}
+              />
+              <Input
+                placeholder="Buscar por nome, código ou fornecedor..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
             </div>
-            <Button onClick={openCreateModal}>
-              <Plus size={18} />
-              Nova Matéria-Prima
-            </Button>
           </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800">
-            <Input
-              placeholder="Buscar por nome, código, fornecedor ou variante..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              icon={<Search size={18} />}
-            />
-          </div>
-          
+
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-neutral-100 dark:border-neutral-800">
+                <tr className="border-b border-neutral-200 dark:border-neutral-800">
                   <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
                     Foto
                   </th>
@@ -518,31 +516,16 @@ export function RawMaterials() {
                     className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300"
                     onClick={() => handleSort('name')}
                   >
-                    Nome {sortField === 'name' && (sortDirection === 'asc' ? '↑' : '↓')}
+                    Nome / SKU
                   </th>
                   <th
                     className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300"
-                    onClick={() => handleSort('sku')}
-                  >
-                    Código
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Unidade
-                  </th>
-                  <th
-                    className="px-6 py-3 text-right text-xs font-medium text-neutral-500 uppercase tracking-wider cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-300"
                     onClick={() => handleSort('unitValue')}
                   >
-                    Valor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Fornecedor
+                    Custo Unit.
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wider">
                     Estoque
-                  </th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wider">
-                    Status
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-neutral-500 uppercase tracking-wider">
                     Químico
@@ -555,218 +538,172 @@ export function RawMaterials() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                {filteredMaterials.map((material) => (
-                  <>
-                    <tr key={material.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
-                      <td className="px-6 py-4">
-                        {material.imageUrl ? (
-                          <img 
-                            src={material.imageUrl} 
-                            alt={material.name}
-                            className="w-10 h-10 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
-                            <Package size={16} className="text-neutral-400" />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {material.hasVariants && (
-                            <button
-                              onClick={() => toggleRowExpanded(material.id)}
-                              className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
-                            >
-                              {expandedRows.includes(material.id) ? (
-                                <ChevronUp size={16} className="text-purple-500" />
-                              ) : (
-                                <ChevronDown size={16} className="text-purple-500" />
-                              )}
-                            </button>
-                          )}
-                          <div>
-                            <span className="font-medium text-neutral-900 dark:text-white">
-                              {material.name}
-                            </span>
-                            {material.hasVariants && (
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <Layers size={12} className="text-purple-500" />
-                                <span className="text-xs text-purple-500">
-                                  {material.variants?.length || 0} variantes
-                                </span>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {filteredMaterials.map((material) => {
+                  const isLowStock = material.currentStock <= material.minStock;
+                  const expStatus = getExpirationStatus(material);
+
+                  return (
+                    <React.Fragment key={material.id}>
+                      <tr className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            {material.imageUrl ? (
+                              <img
+                                src={material.imageUrl}
+                                alt={material.name}
+                                className="w-10 h-10 rounded-lg object-cover border border-neutral-200 dark:border-neutral-700"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center border border-neutral-200 dark:border-neutral-700">
+                                <Package size={20} className="text-neutral-400" />
                               </div>
                             )}
+                            
+                            {/* Bolinha de Status de Validade */}
+                            {getExpirationDot(material)}
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <code className="text-sm text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded">
-                          {material.sku}
-                        </code>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
-                        {material.unitType}
-                      </td>
-                      <td className="px-6 py-4 text-right font-medium text-neutral-900 dark:text-white">
-                        {material.hasVariants ? (
-                          <span className="text-sm text-neutral-500">Varia</span>
-                        ) : (
-                          formatCurrency(material.unitValue)
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-neutral-600 dark:text-neutral-400">
-                        {material.supplier}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span
-                          className={`font-medium ${
-                            material.currentStock <= material.minStock
-                              ? 'text-amber-600'
-                              : 'text-neutral-600 dark:text-neutral-400'
-                          }`}
-                        >
-                          {material.currentStock}/{material.minStock}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <Badge variant={material.status === 'active' ? 'success' : 'default'}>
-                          {material.status === 'active' ? 'Ativo' : 'Inativo'}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {material.isChemical !== false ? (
-                          <Badge variant="info" className="gap-1">
-                            <FlaskConical size={10} />
-                            Químico
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                              {material.name}
+                              {material.status === 'inactive' && (
+                                <Badge variant="danger">Inativo</Badge>
+                              )}
+                              {material.hasVariants && (
+                                <Badge variant="warning" className="flex items-center gap-1">
+                                  <Layers size={12} />
+                                  Variantes
+                                </Badge>
+                              )}
+                            </span>
+                            <span className="text-sm text-neutral-500">
+                              {material.sku} • {material.supplier}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {material.hasVariants ? (
+                            <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                              Variado
+                            </div>
+                          ) : (
+                            <div className="font-medium text-neutral-900 dark:text-white">
+                              {formatCurrency(material.unitValue)}
+                              <span className="text-neutral-500 font-normal ml-1">
+                                /{material.unitType}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium ${
+                              isLowStock
+                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            }`}
+                          >
+                            {isLowStock && <AlertCircle size={14} />}
+                            {material.currentStock} {material.unitType}
+                          </div>
+                          {isLowStock && (
+                            <div className="text-xs text-red-500 mt-1">
+                              Mínimo: {material.minStock}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {material.isChemical !== false ? (
+                            <FlaskConical size={18} className="mx-auto text-purple-500" title="Produto Químico" />
+                          ) : (
+                            <Package size={18} className="mx-auto text-neutral-400" title="Produto Não Químico" />
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <Badge className={expStatus.color}>
+                            {expStatus.text}
                           </Badge>
-                        ) : (
-                          <Badge variant="default">Não</Badge>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex justify-center group relative">
-                          {(() => {
-                            const status = getExpirationStatus(material);
-                            return (
-                              <>
-                                <div 
-                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${status.color} ${status.icon === 'X' ? 'text-neutral-500' : 'text-white'}`}
-                                >
-                                  {status.icon}
-                                </div>
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-neutral-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                                  {status.text}
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => duplicateMaterial(material)}
-                            className="!p-2"
-                            title="Duplicar"
-                          >
-                            <Copy size={16} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openEditModal(material)}
-                            className="!p-2"
-                            title="Editar"
-                          >
-                            <Edit2 size={16} />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setDeleteConfirm(material.id)}
-                            className="!p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                            title="Excluir"
-                          >
-                            <Trash2 size={16} />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                    {/* Variantes expandidas */}
-                    {material.hasVariants && expandedRows.includes(material.id) && material.variants?.map((variant) => (
-                      <tr key={`${material.id}-${variant.id}`} className="bg-purple-50 dark:bg-purple-900/10">
-                        <td className="px-6 py-2"></td>
-                        <td className="px-6 py-2 pl-14">
-                          <span className="text-sm text-purple-700 dark:text-purple-300">
-                            ↳ {variant.name}
-                          </span>
                         </td>
-                        <td className="px-6 py-2">
-                          <code className="text-xs text-purple-600 bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 rounded">
-                            {variant.sku}
-                          </code>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {material.hasVariants && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleRowExpanded(material.id)}
+                                className="!p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                              >
+                                {expandedRows.includes(material.id) ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => duplicateMaterial(material)}
+                              className="!p-2 text-neutral-500 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                              title="Duplicar"
+                            >
+                              <Copy size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditModal(material)}
+                              className="!p-2 text-neutral-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                              title="Editar"
+                            >
+                              <Edit2 size={16} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDeleteConfirm(material.id)}
+                              className="!p-2 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                              title="Excluir"
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          </div>
                         </td>
-                        <td className="px-6 py-2 text-sm text-neutral-500">
-                          {material.unitType}
-                        </td>
-                        <td className="px-6 py-2 text-right font-medium text-purple-700 dark:text-purple-300">
-                          {formatCurrency(variant.unitValue)}
-                        </td>
-                        <td colSpan={4}></td>
                       </tr>
-                    ))}
-                  </>
-                ))}
+                      {/* Variantes expandidas */}
+                      {material.hasVariants && expandedRows.includes(material.id) && material.variants?.map((variant) => (
+                        <tr key={`${material.id}-${variant.id}`} className="bg-purple-50 dark:bg-purple-900/10">
+                          <td className="px-6 py-2"></td>
+                          <td className="px-6 py-2 pl-14">
+                            <span className="text-sm text-purple-700 dark:text-purple-300">
+                              ↳ {variant.name}
+                            </span>
+                          </td>
+                          <td className="px-6 py-2">
+                            <code className="text-xs text-purple-600 bg-purple-100 dark:bg-purple-900/30 px-2 py-1 rounded">
+                              {variant.sku}
+                            </code>
+                          </td>
+                          <td className="px-6 py-2 text-sm font-medium text-neutral-900 dark:text-neutral-300">
+                            {formatCurrency(variant.unitValue)}
+                          </td>
+                          <td colSpan={4}></td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+                {filteredMaterials.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-6 py-8 text-center text-neutral-500 dark:text-neutral-400"
+                    >
+                      Nenhuma matéria-prima encontrada.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
-          
-          {filteredMaterials.length === 0 && (
-            <div className="py-12 text-center">
-              <Package className="mx-auto text-neutral-300 dark:text-neutral-600 mb-4" size={48} />
-              <p className="text-neutral-500">Nenhuma matéria-prima encontrada</p>
-              {searchTerm && (
-                <div className="mt-4">
-                  <p className="text-sm text-neutral-400 mb-3">
-                    Não encontrou "{searchTerm}"?
-                  </p>
-                  <Button
-                    onClick={() => {
-                      // Abre o modal de cadastro com o nome preenchido
-                      setEditingMaterial(null);
-                      setUnitValueInput(0);
-                      setImagePreview('');
-                      setHasVariants(false);
-                      setVariants([]);
-                      reset({
-                        name: searchTerm,
-                        sku: searchTerm.toUpperCase().replace(/\s+/g, '-').substring(0, 10),
-                        unitType: 'KG',
-                        unitValue: 0,
-                        supplier: '',
-                        minStock: 0,
-                        currentStock: 0,
-                        status: 'active',
-                        imageUrl: '',
-                        hasVariants: false,
-                        expirationDate: '',
-                        isIndeterminate: false,
-                      });
-                      setIsModalOpen(true);
-                    }}
-                    className="!bg-green-600 hover:!bg-green-700"
-                  >
-                    <Plus size={16} />
-                    Cadastrar "{searchTerm}"
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -776,333 +713,312 @@ export function RawMaterials() {
         title={editingMaterial ? 'Editar Matéria-Prima' : 'Nova Matéria-Prima'}
         size="lg"
       >
-        <form ref={formContainerRef} onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Seção de Imagem */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              Foto do Produto
-            </label>
-            <div className="flex items-start gap-4">
-              {imagePreview ? (
-                <div className="relative">
-                  <img 
-                    src={imagePreview} 
-                    alt="Preview" 
-                    className="w-24 h-24 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={removeImage}
-                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+        <form ref={formContainerRef} onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <div className="flex gap-6">
+            <div className="w-32 flex-shrink-0">
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                Foto do Produto
+              </label>
+              <div className="relative group">
+                {imagePreview ? (
+                  <>
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-32 h-32 rounded-xl object-cover border-2 border-neutral-200 dark:border-neutral-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-32 h-32 rounded-xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-purple-500 dark:hover:border-purple-500 transition-colors bg-neutral-50 dark:bg-neutral-800/50"
                   >
-                    <X size={14} />
-                  </button>
-                </div>
-              ) : (
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-24 h-24 rounded-xl border-2 border-dashed border-neutral-300 dark:border-neutral-600 flex flex-col items-center justify-center cursor-pointer hover:border-neutral-400 dark:hover:border-neutral-500 transition-colors"
-                >
-                  <Image size={24} className="text-neutral-400 mb-1" />
-                  <span className="text-xs text-neutral-400">Adicionar</span>
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="hidden"
-              />
-              <div className="flex-1 text-sm text-neutral-500">
-                <p>Clique para adicionar uma imagem</p>
-                <p className="text-xs mt-1">Formatos: JPG, PNG, GIF (máx. 2MB)</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Nome *
-              </label>
-              <input
-                {...register('name')}
-                onKeyDown={(e) => handleEnterNavigation(e, 0)}
-                data-field-index="0"
-                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm
-                  transition-all duration-200 placeholder:text-neutral-400
-                  focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                  dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                placeholder="Nome da matéria-prima"
-              />
-              {errors.name?.message && <p className="text-xs text-red-500">{errors.name?.message}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Código (SKU)
-              </label>
-              <input
-                {...register('sku')}
-                onKeyDown={(e) => handleEnterNavigation(e, 1)}
-                data-field-index="1"
-                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm
-                  transition-all duration-200 placeholder:text-neutral-400
-                  focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                  dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                placeholder="Código/SKU"
-              />
-              {errors.sku?.message && <p className="text-xs text-red-500">{errors.sku?.message}</p>}
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Tipo de Unidade *
-              </label>
-              <select
-                {...register('unitType')}
-                onKeyDown={(e) => handleEnterNavigation(e, 2)}
-                data-field-index="2"
-                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm
-                  transition-all duration-200 appearance-none cursor-pointer
-                  focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                  dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-              >
-                {unitOptions.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-              {errors.unitType?.message && <p className="text-xs text-red-500">{errors.unitType?.message}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Fornecedor
-              </label>
-              <input
-                {...register('supplier')}
-                onKeyDown={(e) => handleEnterNavigation(e, 3)}
-                data-field-index="3"
-                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm
-                  transition-all duration-200 placeholder:text-neutral-400
-                  focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                  dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                placeholder="Nome do fornecedor"
-              />
-              {errors.supplier?.message && <p className="text-xs text-red-500">{errors.supplier?.message}</p>}
-            </div>
-          </div>
-
-          {/* Toggle para variantes */}
-          <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
-            <input
-              type="checkbox"
-              id="hasVariants"
-              checked={hasVariants}
-              onChange={(e) => setHasVariants(e.target.checked)}
-              className="w-5 h-5 rounded border-neutral-300 text-purple-500 focus:ring-purple-500"
-            />
-            <label htmlFor="hasVariants" className="flex items-center gap-2 cursor-pointer">
-              <Layers size={18} className="text-purple-500" />
-              <div>
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">Este produto tem variantes</span>
-                <p className="text-xs text-neutral-500">Ex: Essência com diferentes aromas, cada um com preço diferente</p>
-              </div>
-            </label>
-          </div>
-
-          {/* Se tem variantes, mostra o gerenciador de variantes */}
-          {hasVariants ? (
-            <VariantsManager variants={variants} onChange={setVariants} />
-          ) : (
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Valor Unitário *
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                  R$
-                </span>
+                    <Image size={24} className="text-neutral-400" />
+                    <span className="text-xs text-neutral-500 text-center px-2">Adicionar foto</span>
+                  </div>
+                )}
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  value={unitValueInput.toFixed(2).replace('.', ',')}
-                  onChange={(e) => {
-                    const rawValue = e.target.value.replace(/\D/g, '');
-                    const numValue = parseInt(rawValue || '0', 10) / 100;
-                    setUnitValueInput(numValue);
-                    setValue('unitValue', numValue);
-                  }}
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    Nome da Matéria-Prima
+                  </label>
+                  <input
+                    {...register('name')}
+                    onKeyDown={(e) => handleEnterNavigation(e, 0)}
+                    data-field-index="0"
+                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                    placeholder="Nome da matéria-prima"
+                  />
+                  {errors.name?.message && <p className="text-xs text-red-500">{errors.name?.message}</p>}
+                </div>
+
+                <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    Código (SKU)
+                  </label>
+                  <input
+                    {...register('sku')}
+                    onKeyDown={(e) => handleEnterNavigation(e, 1)}
+                    data-field-index="1"
+                    className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                    placeholder="Código/SKU"
+                  />
+                  {errors.sku?.message && <p className="text-xs text-red-500">{errors.sku?.message}</p>}
+                </div>
+
+                <div className="col-span-2">
+                  <div className="flex items-center gap-6 p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-100 dark:border-purple-900/30">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isChemical}
+                        onChange={(e) => setIsChemical(e.target.checked)}
+                        className="w-4 h-4 text-purple-600 rounded border-purple-300 focus:ring-purple-500 dark:border-purple-700 dark:bg-neutral-800"
+                      />
+                      <span className="text-sm font-medium text-purple-900 dark:text-purple-300 flex items-center gap-2">
+                        <FlaskConical size={16} />
+                        Produto Químico
+                      </span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={hasVariants}
+                        onChange={(e) => setHasVariants(e.target.checked)}
+                        className="w-4 h-4 text-purple-600 rounded border-purple-300 focus:ring-purple-500 dark:border-purple-700 dark:bg-neutral-800"
+                      />
+                      <span className="text-sm font-medium text-purple-900 dark:text-purple-300 flex items-center gap-2">
+                        <Layers size={16} />
+                        Possui Variantes (Ex: Essências)
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                {!hasVariants && (
+                  <>
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Unidade de Medida
+                      </label>
+                      <select
+                        {...register('unitType')}
+                        onKeyDown={(e) => handleEnterNavigation(e, 2)}
+                        data-field-index="2"
+                        className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                      >
+                        {unitOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      {errors.unitType?.message && <p className="text-xs text-red-500">{errors.unitType?.message}</p>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                        Custo Unitário (R$)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400">
+                          R$
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          onKeyDown={(e) => handleEnterNavigation(e, 3)}
+                          data-field-index="3"
+                          value={unitValueInput.toFixed(2).replace('.', ',')}
+                          onChange={(e) => {
+                            const rawValue = e.target.value.replace(/\D/g, '');
+                            const numValue = parseInt(rawValue || '0', 10) / 100;
+                            setUnitValueInput(numValue);
+                            setValue('unitValue', numValue);
+                          }}
+                          className="w-full rounded-xl border border-neutral-200 bg-white pl-10 pr-4 py-2.5 text-sm transition-all duration-200 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                        />
+                      </div>
+                      {errors.unitValue?.message && <p className="text-xs text-red-500">{errors.unitValue?.message}</p>}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {hasVariants && (
+            <VariantsManager variants={variants} onChange={setVariants} />
+          )}
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5 col-span-2">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Fornecedor
+                </label>
+                <input
+                  {...register('supplier')}
                   onKeyDown={(e) => handleEnterNavigation(e, 4)}
                   data-field-index="4"
-                  className="w-full rounded-xl border border-neutral-200 bg-white pl-10 pr-4 py-2.5 text-sm
-                    transition-all duration-200 placeholder:text-neutral-400
-                    focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                    dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                  placeholder="0,00"
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  placeholder="Nome do fornecedor"
                 />
+                {errors.supplier?.message && <p className="text-xs text-red-500">{errors.supplier?.message}</p>}
               </div>
-              {errors.unitValue?.message && <p className="text-xs text-red-500">{errors.unitValue?.message}</p>}
             </div>
-          )}
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Estoque Mínimo
-              </label>
-              <input
-                type="number"
-                {...register('minStock', { valueAsNumber: true })}
-                onKeyDown={(e) => handleEnterNavigation(e, 5)}
-                data-field-index="5"
-                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm
-                  transition-all duration-200 placeholder:text-neutral-400
-                  focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                  dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                placeholder="0"
-              />
-              {errors.minStock?.message && <p className="text-xs text-red-500">{errors.minStock?.message}</p>}
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Estoque Atual
-              </label>
-              <input
-                type="number"
-                {...register('currentStock', { valueAsNumber: true })}
-                onKeyDown={(e) => handleEnterNavigation(e, 6)}
-                data-field-index="6"
-                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm
-                  transition-all duration-200 placeholder:text-neutral-400
-                  focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                  dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-                placeholder="0"
-              />
-              {errors.currentStock?.message && <p className="text-xs text-red-500">{errors.currentStock?.message}</p>}
-            </div>
-          </div>
-          
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-              Status
-            </label>
-            <select
-              {...register('status')}
-              onKeyDown={(e) => handleEnterNavigation(e, 7)}
-              data-field-index="7"
-              className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm
-                transition-all duration-200 appearance-none cursor-pointer
-                focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
-            >
-              <option value="active">Ativo</option>
-              <option value="inactive">Inativo</option>
-            </select>
-          </div>
 
-          {/* Toggle Produto Químico */}
-          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-xl ${isChemical ? 'bg-blue-500' : 'bg-neutral-300 dark:bg-neutral-600'} transition-colors`}>
-                <FlaskConical size={20} className="text-white" />
-              </div>
-              <div>
-                <span className="font-medium text-neutral-900 dark:text-white">Produto Químico?</span>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                  {isChemical 
-                    ? 'Entra no cálculo de porcentagem da fórmula' 
-                    : 'Não entra no cálculo (ex: embalagem, rótulo, tampa)'}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsChemical(!isChemical)}
-              className={`relative w-14 h-8 rounded-full transition-colors duration-200 ${
-                isChemical 
-                  ? 'bg-blue-500' 
-                  : 'bg-neutral-300 dark:bg-neutral-600'
-              }`}
-            >
-              <span 
-                className={`absolute top-1 left-1 w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-200 ${
-                  isChemical ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                Data de Vencimento
-              </label>
-              <input
-                type="date"
-                {...register('expirationDate')}
-                disabled={isIndeterminate}
-                className={`w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-sm
-                  transition-all duration-200
-                  focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100
-                  dark:border-neutral-700 dark:text-white
-                  ${isIndeterminate ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed' : 'bg-white dark:bg-neutral-800'}`}
-              />
-            </div>
-            <div className="flex items-end pb-3">
-               <div className="flex items-center gap-3 p-3 w-full bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
+            {/* Grupo de Data de Vencimento e Indeterminado */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Data de Vencimento
+                </label>
                 <input
-                  type="checkbox"
-                  id="isIndeterminate"
-                  checked={isIndeterminate}
-                  onChange={(e) => {
-                    setIsIndeterminate(e.target.checked);
-                    if (e.target.checked) {
-                      setValue('expirationDate', '');
-                    }
-                  }}
-                  className="w-5 h-5 rounded border-neutral-300 text-purple-500 focus:ring-purple-500"
+                  type="date"
+                  disabled={isIndeterminate || !isChemical}
+                  {...register('expirationDate')}
+                  onKeyDown={(e) => handleEnterNavigation(e, 5)}
+                  data-field-index="5"
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 disabled:opacity-50 disabled:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
                 />
-                <label htmlFor="isIndeterminate" className="flex items-center gap-2 cursor-pointer select-none">
-                  <div>
-                    <span className="font-medium text-neutral-700 dark:text-neutral-300">Indeterminado</span>
-                    <p className="text-xs text-neutral-500">Marque se não possui validade</p>
-                  </div>
+              </div>
+
+              <div className="space-y-1.5 flex flex-col justify-end pb-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isIndeterminate}
+                    onChange={(e) => {
+                      setIsIndeterminate(e.target.checked);
+                      setValue('isIndeterminate', e.target.checked);
+                      if (e.target.checked) setValue('expirationDate', '');
+                    }}
+                    disabled={!isChemical}
+                    className="w-4 h-4 text-purple-600 rounded border-neutral-300 focus:ring-purple-500 dark:border-neutral-600 dark:bg-neutral-700"
+                  />
+                  <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                    Validade Indeterminada
+                  </span>
                 </label>
               </div>
             </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Estoque Mín.
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  {...register('minStock', { valueAsNumber: true })}
+                  onKeyDown={(e) => handleEnterNavigation(e, 6)}
+                  data-field-index="6"
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  placeholder="0"
+                />
+                {errors.minStock?.message && <p className="text-xs text-red-500">{errors.minStock?.message}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Estoque Atual
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  {...register('currentStock', { valueAsNumber: true })}
+                  onKeyDown={(e) => handleEnterNavigation(e, 7)}
+                  data-field-index="7"
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+                  placeholder="0"
+                />
+                {errors.currentStock?.message && <p className="text-xs text-red-500">{errors.currentStock?.message}</p>}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                Status
+              </label>
+              <select
+                {...register('status')}
+                onKeyDown={(e) => handleEnterNavigation(e, 8)}
+                data-field-index="8"
+                className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-sm transition-all duration-200 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white"
+              >
+                <option value="active">Ativo</option>
+                <option value="inactive">Inativo</option>
+              </select>
+            </div>
           </div>
-          
-          <div className="flex justify-end gap-3 pt-4">
-            <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)}>
+
+          <div className="flex justify-end gap-3 pt-6 border-t border-neutral-100 dark:border-neutral-800">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsModalOpen(false)}
+            >
               Cancelar
             </Button>
-            <Button ref={submitButtonRef} type="submit">
-              {editingMaterial ? 'Salvar Alterações' : 'Cadastrar'}
+            <Button type="submit" ref={submitButtonRef}>
+              {editingMaterial ? 'Salvar Alterações' : 'Adicionar Matéria-Prima'}
             </Button>
           </div>
         </form>
       </Modal>
 
-      <Modal
-        isOpen={!!deleteConfirm}
-        onClose={() => setDeleteConfirm(null)}
-        title="Confirmar Exclusão"
-        size="sm"
-      >
-        <p className="text-neutral-600 dark:text-neutral-400 mb-6">
-          Tem certeza que deseja excluir esta matéria-prima? Esta ação não pode ser desfeita.
-        </p>
-        <div className="flex justify-end gap-3">
-          <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={() => deleteConfirm && handleDelete(deleteConfirm)}>
-            Excluir
-          </Button>
-        </div>
-      </Modal>
+      {deleteConfirm && (
+        <Modal
+          isOpen={!!deleteConfirm}
+          onClose={() => setDeleteConfirm(null)}
+          title="Excluir Matéria-Prima"
+        >
+          <div className="space-y-6">
+            <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-xl flex gap-3">
+              <AlertCircle className="flex-shrink-0" size={20} />
+              <p className="text-sm">
+                Tem certeza que deseja excluir esta matéria-prima? Esta ação não
+                pode ser desfeita.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => handleDelete(deleteConfirm)}
+              >
+                Excluir
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
